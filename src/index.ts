@@ -6,10 +6,13 @@ import { GLContext } from './gl';
 import { PBRShader } from './shader/pbr-shader';
 import { Texture, Texture2D } from './textures/texture';
 import { UniformType } from './types';
+import { PointLight } from './lights/lights';
 
 // GUI elements
 interface GUIProperties {
   albedo: number[];
+  roughness: number;
+  metallic: number;
 }
 
 /**
@@ -25,7 +28,7 @@ class Application {
   private _textureExample: Texture2D<HTMLElement> | null;
   private _camera: Camera;
   private _guiProperties: GUIProperties; // Object updated with the properties from the GUI
-
+  private _lights: PointLight[];
 
   constructor(canvas: HTMLCanvasElement) {
     this._context = new GLContext(canvas);
@@ -34,20 +37,56 @@ class Application {
     this._shader = new PBRShader();
     this._textureExample = null;
     this._uniforms = {
+      'roughness': 0.5,
+      'metallic': 0.0,
       'uMaterial.albedo': vec3.create(),
       'uModel.LS_to_WS': mat4.create(),
       'uCamera.WS_to_CS': mat4.create(),
+      'uCamera.pos': vec3.create(),
+
+      'uLightCount': 0,
+      'uLightPositions': Array(0),
+      'uLightColors': Array(0),
+      'uLightIntensities': Array(0),
     };
 
     // Set GUI default values
     this._guiProperties = {
       albedo: [255, 255, 255],
+      roughness: 0.5,
+      metallic: 0.0,
     };
+
+    this._lights = [
+      new PointLight(vec3.fromValues(0, 1, 10), vec3.fromValues(1, 1, 1), 800.0),
+      new PointLight(vec3.fromValues(2, 1, 10), vec3.fromValues(1, 1, 1), 400.0)
+    ];
+
     // Creates a GUI floating on the upper right side of the page.
     // You are free to do whatever you want with this GUI.
     // It's useful to have parameters you can dynamically change to see what happens.
     const gui = new GUI();
     gui.addColor(this._guiProperties, 'albedo');
+    gui.add(this._guiProperties, 'roughness', 0.0, 1.0);
+    gui.add(this._guiProperties, 'metallic', 0.0, 1.0);
+
+    this._lights.forEach((light, index) => {
+      const lightFolder = gui.addFolder(`Light ${index + 1}`);
+      const colorWrapper = {
+        color: [light.color[0] * 255, light.color[1] * 255, light.color[2] * 255]
+      };
+      
+      lightFolder.addColor(colorWrapper, 'color').onChange((value: number[]) => {
+        vec3.set(light.color, value[0] / 255, value[1] / 255, value[2] / 255);
+      });
+      
+
+      lightFolder.add(light, 'intensity', 0.0, 2000.0);      
+      lightFolder.add(light.positionWS, 0, -10.0, 10.0).name('x');
+      lightFolder.add(light.positionWS, 1, -10.0, 10.0).name('y');
+      lightFolder.add(light.positionWS, 2, -10.0, 10.0).name('z');
+      lightFolder.open();
+    });
   }
 
   /**
@@ -108,6 +147,35 @@ class Application {
     const aspect = this._context.gl.drawingBufferWidth / this._context.gl.drawingBufferHeight;
     let WS_to_CS = this._uniforms['uCamera.WS_to_CS'] as mat4;
     mat4.multiply(WS_to_CS, this._camera.computeProjection(aspect), this._camera.computeView());
+
+    this._uniforms['uCamera.pos'] = this._camera._position;
+
+    this._uniforms['roughness'] = props.roughness;
+    this._uniforms['metallic'] = props.metallic;
+
+    // Update light uniforms from GUI properties
+    const lightCount = this._lights.length;
+    const positions = Array(lightCount * 3).fill(0);
+    const colors = Array(lightCount * 3).fill(0);
+    const intensities = Array(lightCount).fill(0);
+
+    this._lights.forEach((light, index) => {
+      positions[index * 3] = light.positionWS[0];
+      positions[index * 3 + 1] = light.positionWS[1];
+      positions[index * 3 + 2] = light.positionWS[2];
+
+      colors[index * 3] = light.color[0];
+      colors[index * 3 + 1] = light.color[1];
+      colors[index * 3 + 2] = light.color[2];
+
+      intensities[index] = light.intensity;
+    });
+
+    this._uniforms['uLightCount'] = lightCount;
+    this._uniforms['uLightPositions'] = positions;
+    this._uniforms['uLightColors'] = colors;
+    this._uniforms['uLightIntensities'] = intensities;
+
 
     // Draw the 5x5 grid of spheres
     const rows = 5;

@@ -23,6 +23,7 @@ export type Constructor<T> = new (...args: any) => T;
 export type UniformType =
   | number
   | Float32Array
+  | Array<number>
   | Uint8Array
   | Uint16Array
   | Uint32Array

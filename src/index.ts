@@ -15,6 +15,11 @@ interface GUIProperties {
   metallic: number;
 }
 
+interface SphereProperties {
+  roughness: number;
+  metallic: number;
+}
+
 /**
  * Class representing the current application with its state.
  *
@@ -29,6 +34,7 @@ class Application {
   private _camera: Camera;
   private _guiProperties: GUIProperties; // Object updated with the properties from the GUI
   private _lights: PointLight[];
+  private _sphereProperties: SphereProperties[][]; // 2D array [row][column]
 
   constructor(canvas: HTMLCanvasElement) {
     this._context = new GLContext(canvas);
@@ -45,9 +51,9 @@ class Application {
       'uCamera.pos': vec3.create(),
 
       'uLightCount': 0,
-      'uLightPositions': Array(0),
-      'uLightColors': Array(0),
-      'uLightIntensities': Array(0),
+      'uLightPositions[0]': new Float32Array(0),
+      'uLightColors[0]': new Float32Array(0),
+      'uLightIntensities[0]': new Float32Array(0),
     };
 
     // Set GUI default values
@@ -58,17 +64,31 @@ class Application {
     };
 
     this._lights = [
-      new PointLight(vec3.fromValues(0, 1, 10), vec3.fromValues(1, 1, 1), 800.0),
-      new PointLight(vec3.fromValues(2, 1, 10), vec3.fromValues(1, 1, 1), 400.0)
+      new PointLight(vec3.fromValues(-10, 10, 10), vec3.fromValues(1, 1, 1), 2000.0),
+      new PointLight(vec3.fromValues(10, 10, 10), vec3.fromValues(1, 1, 1), 2000.0),
+      new PointLight(vec3.fromValues(-10, -10, 10), vec3.fromValues(1, 1, 1), 2000.0),
+      new PointLight(vec3.fromValues(10, -10, 10), vec3.fromValues(1, 1, 1), 2000.0)
     ];
+
+    // Initialize sphere properties for 5x5 grid
+    const rows = 5;
+    const columns = 5;
+    this._sphereProperties = [];
+    for (let r = 0; r < rows; ++r) {
+      this._sphereProperties[r] = [];
+      for (let c = 0; c < columns; ++c) {
+        this._sphereProperties[r][c] = {
+          roughness: 0.01 + (c / (columns - 1)) * 0.99,
+          metallic: r / (rows - 1)
+        };
+      }
+    }
 
     // Creates a GUI floating on the upper right side of the page.
     // You are free to do whatever you want with this GUI.
     // It's useful to have parameters you can dynamically change to see what happens.
     const gui = new GUI();
     gui.addColor(this._guiProperties, 'albedo');
-    gui.add(this._guiProperties, 'roughness', 0.0, 1.0);
-    gui.add(this._guiProperties, 'metallic', 0.0, 1.0);
 
     this._lights.forEach((light, index) => {
       const lightFolder = gui.addFolder(`Light ${index + 1}`);
@@ -82,11 +102,21 @@ class Application {
       
 
       lightFolder.add(light, 'intensity', 0.0, 2000.0);      
-      lightFolder.add(light.positionWS, 0, -10.0, 10.0).name('x');
-      lightFolder.add(light.positionWS, 1, -10.0, 10.0).name('y');
-      lightFolder.add(light.positionWS, 2, -10.0, 10.0).name('z');
+      lightFolder.add(light.positionWS, '0', -10.0, 10.0).name('x');
+      lightFolder.add(light.positionWS, '1', -10.0, 10.0).name('y');
+      lightFolder.add(light.positionWS, '2', -10.0, 10.0).name('z');
       lightFolder.open();
     });
+
+    // Add GUI controls for each sphere
+    const spheresFolder = gui.addFolder('Spheres');
+    for (let r = 0; r < rows; ++r) {
+      for (let c = 0; c < columns; ++c) {
+        const sphereFolder = spheresFolder.addFolder(`Sphere [${r},${c}]`);
+        sphereFolder.add(this._sphereProperties[r][c], 'metallic', 0.0, 1.0);
+        sphereFolder.add(this._sphereProperties[r][c], 'roughness', 0.01, 1.0);
+      }
+    }
   }
 
   /**
@@ -155,9 +185,9 @@ class Application {
 
     // Update light uniforms from GUI properties
     const lightCount = this._lights.length;
-    const positions = Array(lightCount * 3).fill(0);
-    const colors = Array(lightCount * 3).fill(0);
-    const intensities = Array(lightCount).fill(0);
+    const positions = new Float32Array(lightCount * 3);
+    const colors = new Float32Array(lightCount * 3);
+    const intensities = new Float32Array(lightCount);
 
     this._lights.forEach((light, index) => {
       positions[index * 3] = light.positionWS[0];
@@ -172,9 +202,9 @@ class Application {
     });
 
     this._uniforms['uLightCount'] = lightCount;
-    this._uniforms['uLightPositions'] = positions;
-    this._uniforms['uLightColors'] = colors;
-    this._uniforms['uLightIntensities'] = intensities;
+    this._uniforms['uLightPositions[0]'] = positions;
+    this._uniforms['uLightColors[0]'] = colors;
+    this._uniforms['uLightIntensities[0]'] = intensities;
 
 
     // Draw the 5x5 grid of spheres
@@ -183,6 +213,8 @@ class Application {
     const spacing = this._geometry.radius * 2.5;
     for (let r = 0; r < rows; ++r) {
       for (let c = 0; c < columns; ++c) {
+        this._uniforms['metallic'] = this._sphereProperties[r][c].metallic;
+        this._uniforms['roughness'] = this._sphereProperties[r][c].roughness;
 
         // Set Local-Space to World-Space transformation matrix (a.k.a model).
         const WsSphereTranslation = vec3.fromValues(

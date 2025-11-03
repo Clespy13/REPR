@@ -645,8 +645,13 @@ export function uploadUniform(
   switch (type) {
     case gl.BOOL:
       gl.uniform1ui(loc, value as number);
+      break;
     case gl.FLOAT:
-      gl.uniform1f(loc, value as number);
+      if (typeof value === 'number') {
+        gl.uniform1f(loc, value as number);
+      } else {
+        gl.uniform1fv(loc, value as Float32Array);
+      }
       break;
     case gl.FLOAT_VEC2:
       gl.uniform2fv(loc, value as Float32Array);

@@ -90,7 +90,7 @@ vec3 calculateSpecularBRDF(vec3 albedo, vec3 normal, vec3 w_o, vec3 w_i, float r
   vec3 F = calculateFresnelSchlick(w_i, w_o, F0);
   float G = calculateGeometrySmith(normal, w_i, w_o, k);
 
-  return  (D * F * G) / (4.0 * max(dot(w_o, normal), 0.00001) * max(dot(w_i, normal), 0.00001));
+  return  vec3((D * G) / (4.0 * max(dot(w_o, normal), 0.00001) * max(dot(w_i, normal), 0.00001)));
 }
 
 vec3 calculateBRDF(PointLight light, vec3 position, vec3 normal, vec3 w_o, float roughness, float metallic, vec3 albedo) {
@@ -108,9 +108,14 @@ void main()
   // **DO NOT** forget to do all your computation in linear space.
   vec3 albedo = sRGBToLinear(vec4(uMaterial.albedo, 1.0)).rgb;
 
+  vec3 w_o = normalize(ViewDirectionWS);
+  vec3 normal = normalize(vNormalWS);
+
   vec3 irradiance = vec3(0.0);
 
-  for (int i = 0; i < uLightCount; i++) {
+  for (int i = 0; i < MAX_LIGHTS; i++) {
+    if (i >= uLightCount) break;
+    
     PointLight light;
     light.pos = vec3(
       uLightPositions[i * 3],
@@ -124,7 +129,7 @@ void main()
     );
     light.intensity = uLightIntensities[i];
 
-    irradiance += calculateBRDF(light, vPositionWS, vNormalWS, ViewDirectionWS, roughness, metallic, albedo);
+    irradiance += calculateBRDF(light, vPositionWS, normal, w_o, roughness, metallic, albedo);
   }
 
   irradiance = tonemap(irradiance);
